@@ -1,97 +1,61 @@
 
 
 const express = require('express')
+
 const app = express()
 app.use(express.json())
-
 app.use(express.static('dist'))
 
 const morgan = require('morgan')
-app.use(morgan(''))
-
-morgan.token('type', function (req, res) { return req.headers['content-type'] })
+app.use(morgan('tiny'))
 //pendiente el 3.8*
-const cors = require('cors')
-app.use(cors())
 
 
+// const cors = require('cors')
+// app.use(cors())
 
-persons = [
-    { 
-      "id": 1,
-      "name": "Arto Hellas", 
-      "phone": "040-123456"
-    },
-    { 
-      "id": 2,
-      "name": "Ada Lovelace", 
-      "phone": "39-44-5323523"
-    },
-    { 
-      "id": 3,
-      "name": "Dan Abramov", 
-      "phone": "12-43-234345"
-    },
-    { 
-      "id": 4,
-      "name": "Mary Poppendieck", 
-      "phone": "39-23-6423122"
-    },
-    {
-      "id": 5,
-      "name": "John D", 
-      "phone": "11111111111111111"
-    }
-]
+require('dotenv').config();
+
+const Contact = require('./models/contact')
 
 
 /* SOLICITUDES GET */ 
 
 app.get('/api/persons', (request, response)=>{   
-    response.json(persons)
+    
+  Contact.find({}).then( contacts => response.json(contacts) )
+  
 })
 
 
 app.get('/api/info', (request, response)=>{
-    const peopleQty = persons.length
+
+  Contact.countDocuments().then(peopleQty => {
     const currentTime = new Date()
-    const message = `<h1>Information</h1> 
+    const message = `<h1>API Information</h1> 
                     <p>Phonebook has info for ${peopleQty} people</p> 
                     <p>${currentTime}</p>` 
     
-    response.send(message)
+    response.status(200).send(message)
+  } )
     
 })
 
 
-app.get('/api/persons/:id', (request, response)=>{
-    const id = Number(request.params.id)
-    const person = persons.find(person => person.id === id)
+app.get('/api/persons/:id', (request, response, next)=>{
+  Contact.findById(request.params.id).then( person => { 
+    if (!person) {
+      return response.status(400).json({
+          error: "contact doesn't exist"
+      }) 
+    }
+    response.status(200).json(person) 
 
-    person ? response.json(person) : response.status(404).end()
-
+  }).catch(error => next(error))
 })
 
 
 /**SOLICITUDES POST */
-
-const generateID = ()=>{
-  const maxID = 1000000
-  const newID = Math.floor( Math.random() * ( maxID - 1 ) + 1)
-  const validateID = persons.some(person => person.id === newID)
-  
-  //Al llegar al maximo de id ya deja de asignarlas para evitar entrar en un loop infinito
-  if (persons.length === maxID-1 ) {
-    return    
-  } 
-
-  //Entra en un loop en donde va a estar llamandose a si misma hasta asignar un id que no este repetido
-  if (validateID) {
-    return generateID()
-  }else{
-    return newID
-  }
-}
 
 
 app.post('/api/persons', (request, response)=>{
@@ -103,47 +67,85 @@ app.post('/api/persons', (request, response)=>{
             error: "name and phone must be filled"
         })
     } 
-
+  
+  /*
     const repeatedName = persons.some( person => person.name.toLowerCase() === body.name.toLowerCase())
     if (repeatedName) {
       return response.status(400).json({
         error: "name must be unique"
     })
     }
-
+*/
     //Crea el objeto persona para agregarlo luego
-    const person ={
-        id: generateID() ,
+    const person = new Contact({
         name: body.name,
         phone: body.phone
-    }
+    })
 
-    persons = persons.concat(person)
-    response.json(person)
+    person.save().then( savedPerson => response.json(savedPerson)  )    
     
+})
+
+/*SOLICITUD PUT */
+
+app.put('/api/persons/:id', (request, response, next)=>{
+  const body = request.body;
+
+  if (!body.name || !body.phone) {
+    return response.status(400).json({error:"name and phone must be filled"})
+  }
+
+  const person = {
+    name: body.name,
+    phone: body.phone 
+  } 
+
+  Contact.findByIdAndUpdate(request.params.id, person, { new: true })
+    .then( updatedPerson => {
+      response.status(200).json(updatedPerson)
+    }).catch(error => next(error))
+
 })
 
 
 /**SOLICITUD DELETE */
 
-app.delete('/api/persons/:id', (request, response)=>{
+app.delete('/api/persons/:id', (request, response, next)=>{
   
-  const id = Number(request.params.id)  
-  const deletedPerson = persons.filter( person => person.id === id )
-  
-  if (!deletedPerson[0]) {
-    return response.status(400).json({
-      error: "contact don't exist"
-  })
-  }
+  Contact.findByIdAndDelete(request.params.id).then( deletedPerson => {
+    if (!deletedPerson) {
+      return response.status(400).json({
+        error: "contact doesn't exist"
+      })
+    }  
 
-  persons = persons.filter( person => person.id !== id )  
+    response.status(200).json(deletedPerson)
+  }).catch(error => next(error))
 
-  response.json(deletedPerson[0])
-  
-  
 })
 
+
+/* MANEJO DE ERRORES */
+const unknownEndpoint = (request, response) => {
+  response.status(404).send({ error: 'unknown endpoint' })
+}
+
+app.use(unknownEndpoint)
+
+const errorHandler = (error, request, response, next) => {
+  console.error(error.message)
+  if (error.name === 'CastError') {
+    return response.status(400).send({ error: 'malformatted id' })
+  } 
+  next(error)
+}
+// este debe ser el último middleware cargado, ¡también todas las rutas deben ser registrada antes que esto!
+app.use(errorHandler)
+
+
+
+
+/*PUERTOS */
 
 const PORT = process.env.PORT || 3001
 app.listen(PORT, ()=>{
