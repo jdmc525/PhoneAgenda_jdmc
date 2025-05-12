@@ -17,8 +17,27 @@ mongoose.connect(url)
   })
 
 const contactSchema = new mongoose.Schema({
-  name: String,
-  phone: String,
+  name: {
+    type: String,
+    minLength: [3, "Error: El nombre debe tener al menos 3 caracteres"],
+    required :[true, `Error: El nombre es obligatorio` ],
+  },
+  phone: {
+    type: String,
+    minLength: [8,"Error: El numero de telefono debe tener al menos 8 caracteres"],
+    required: [true, `Error: El numero de telefono es obligatorio` ],
+    validate: {
+        validator: (value)=>{
+          if ( value.indexOf('-') === 2 || value.indexOf('-') === 3  ) {
+              const valueNumber = Number( value.replace('-', '0'))
+              return !isNaN(valueNumber) 
+          }else{
+              return false
+          }
+        },
+        message: props => `Error: ${props.value} no es valido, debe cumplir el formato XXX-XXXXX o XX-XXXXXX`
+    }
+  },
 })
 
 contactSchema.set('toJSON', {

@@ -56,33 +56,18 @@ app.get('/api/persons/:id', (request, response, next)=>{
 
 
 /**SOLICITUDES POST */
-
-
-app.post('/api/persons', (request, response)=>{
-    
-  //Manejo de Errores 
-  const body = request.body
-    if (!body.name || !body.phone) {
-        return response.status(400).json({
-            error: "name and phone must be filled"
-        })
-    } 
+app.post('/api/persons', (request, response, next)=>{
+    const body = request.body
   
-  /*
-    const repeatedName = persons.some( person => person.name.toLowerCase() === body.name.toLowerCase())
-    if (repeatedName) {
-      return response.status(400).json({
-        error: "name must be unique"
-    })
-    }
-*/
-    //Crea el objeto persona para agregarlo luego
+  //Crea el objeto persona para agregarlo luego
     const person = new Contact({
         name: body.name,
         phone: body.phone
     })
 
-    person.save().then( savedPerson => response.json(savedPerson)  )    
+    person.save()
+      .then( savedPerson => response.json(savedPerson)  )
+      .catch(error => next(error))
     
 })
 
@@ -91,16 +76,12 @@ app.post('/api/persons', (request, response)=>{
 app.put('/api/persons/:id', (request, response, next)=>{
   const body = request.body;
 
-  if (!body.name || !body.phone) {
-    return response.status(400).json({error:"name and phone must be filled"})
-  }
-
   const person = {
     name: body.name,
     phone: body.phone 
   } 
 
-  Contact.findByIdAndUpdate(request.params.id, person, { new: true })
+  Contact.findByIdAndUpdate(request.params.id, person, { new: true , runValidators: true , context:'query' })
     .then( updatedPerson => {
       response.status(200).json(updatedPerson)
     }).catch(error => next(error))
@@ -115,7 +96,7 @@ app.delete('/api/persons/:id', (request, response, next)=>{
   Contact.findByIdAndDelete(request.params.id).then( deletedPerson => {
     if (!deletedPerson) {
       return response.status(400).json({
-        error: "contact doesn't exist"
+        message: "contact doesn't exist"
       })
     }  
 
@@ -136,7 +117,9 @@ const errorHandler = (error, request, response, next) => {
   console.error(error.message)
   if (error.name === 'CastError') {
     return response.status(400).send({ error: 'malformatted id' })
-  } 
+  } else if (error.name === 'ValidationError') {
+    return response.status(400).send(error.message)
+  }
   next(error)
 }
 // este debe ser el último middleware cargado, ¡también todas las rutas deben ser registrada antes que esto!
